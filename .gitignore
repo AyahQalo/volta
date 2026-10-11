@@ -1,0 +1,9 @@
+# data is downloaded from Kaggle by each teammate (see README)
+data/raw/*
+!data/raw/.gitkeep
+# saved models can be large; share them in the chat/drive if needed
+*.h5
+*.keras
+.ipynb_checkpoints/
+__pycache__/
+.DS_Store
