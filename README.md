@@ -1,4 +1,4 @@
-Idea: VOLTA is a time-series forecasting project focused on predicting Spain’s actual electricity prices for the next 24 hours, hour by hour.
+ VOLTA is a time-series forecasting project focused on predicting Spain’s actual electricity prices for the next 24 hours, hour by hour.
 
 We use historical electricity prices and calendar features to train and compare LSTM and GRU models against simple forecasting baselines.
 
