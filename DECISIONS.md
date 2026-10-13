@@ -1,29 +1,54 @@
-# Decisions (edit together at the standup)
+VOLTA — Project Decisions
 
-Status: PROPOSED = suggested, not yet agreed. Change to AGREED after the team decides.
+Project Scope
 
-| # | Decision | Value | Status |
-|---|---|---|---|
-| 1 | Targets | 4 targets: price (`price actual`, EUR/MWh), demand (`total load actual`, MW), variable renewable (solar + wind onshore, MW), fossil (gas + hard coal + lignite + oil, MW). Work order: price first | PROPOSED |
-| 2 | Time step | 1 hour | PROPOSED |
-| 3 | Forecast horizon | next 24 hours | PROPOSED |
-| 4 | Forecast issue time | once a day at 00:00 UTC (check which information is available at that time) | PROPOSED |
-| 5 | Input window (LSTM) | last 168 hours | PROPOSED |
-| 6 | Split (by date) | train 2015–2016, validation 2017, test 2018 (test untouched until the final run) | PROPOSED |
-| 7 | Main metric | MAE per target, in its own unit (no combined number). Also report RMSE. No MAPE for targets that can be near zero | PROPOSED |
-| 8 | Which mistake is worse? | price: too LOW at peak hours; demand: too LOW; renewable: too HIGH; fossil: both directions | PROPOSED |
-| 9 | Baselines | last value; same hour yesterday (24h); same hour last week (168h) | PROPOSED |
-| 10 | Models | 4 independent LSTMs (one per target) on one shared data pipeline | PROPOSED |
-| 11 | Shared pipeline | same cleaning, same date split, same window construction, same leakage rules; scaler fitted on training data only, one per target | PROPOSED |
-| 12 | Extra model (ask teaching crew first) | Gradient Boosting | PROPOSED |
-| 13 | Known at forecast time | calendar features; past values; official day-ahead forecasts (load, solar, wind, price) | PROPOSED |
-| 14 | NOT known at forecast time | actual weather / generation / load / price of the hours being forecast | PROPOSED |
-| 15 | Missing values | short gaps (<=6h) interpolated; zeros in major plants treated as missing | PROPOSED |
+* Target: price actual (EUR/MWh).
+* Forecast horizon: Next 24 hours, with one prediction per hour.
+* Forecast frequency: One 24-hour forecast issued daily at 00:00 UTC.
+* Input window: Previous 168 hours (7 days).
+* Geographic scope: Spain.
 
-## Questions for the teaching crew
-- Our project forecasts 4 targets (one model each, 24h horizon). Is this accepted, or should we use price as the main target and the others as an extension?
-- Can we add Gradient Boosting as an extra comparison next to the LSTM and the baselines?
-- The guide asks for cross-validation. For time series, is a time-based validation (rolling windows) the right choice?
+Dataset
 
-## Log (add a line for every important change)
-- 2026-10-11: repo created, README and DECISIONS added.
+* Source: Kaggle — Energy consumption, generation, prices and weather in Spain.
+* Time period: 2015–2018.
+* Frequency: Hourly.
+
+Data Splitting
+
+* Training: 2015–2016.
+* Validation: 2017.
+* Testing: 2018.
+* Chronological splitting only, without random shuffling.
+* Scalers are fitted using training data only.
+
+Models and Evaluation
+
+* Models: LSTM and GRU.
+* Baselines: Last Value, Lag-24, and Lag-168.
+* Primary metric: MAE (EUR/MWh).
+* Secondary metric: RMSE (EUR/MWh).
+* Compare models on identical validation timestamps.
+
+Feature Engineering
+
+* Start with historical price actual.
+* Add is_weekend using Spain’s local calendar.
+* Future calendar information is allowed because it is known in advance.
+* Do not use future actual measurements as inputs.
+* Exclude price day ahead from the input features based on instructor guidance about data leakage.
+
+Model Improvement
+
+* Compare the original models with the weekend-enhanced models.
+* Tune selected hyperparameters one at a time.
+* Select the best model using validation results.
+* Evaluate the selected final model on the untouched 2018 test set.
+
+Final Deliverables
+
+* Reproducible modeling notebook.
+* Saved trained model and preprocessing artifacts.
+* Prediction notebook that loads the saved model without retraining.
+* Interactive visualization of hourly forecasts.
+* Final presentation with model comparisons, results, and limitations.
