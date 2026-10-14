@@ -1,86 +1,49 @@
 # VOLTA – Streamlit App
 
-An interactive, English-language app for the VOLTA energy forecasting project.
-It lets you explore the dataset and shows how a 24-hour price forecast will be presented.
+Predicting tomorrow's electricity price in Spain. The app runs the final model from
+`notebooks/04_models.ipynb` (LSTM + `is_weekend`, trained on 2015–2017, tested on 2018).
+Every number in the app is computed from the model's predictions.
 
-**Important:** no trained model is connected yet. The Forecast page runs in clearly labelled
-**demo mode** (a simple "same hour yesterday" baseline). Final results belong in `demo.ipynb`.
-
-## 1. Folder structure
+## Folder structure
 
 ```
-volta_app/
-├─ app.py                      Landing page (start here)
-├─ requirements.txt            Libraries to install
-├─ README.md                   This file
-├─ .streamlit/config.toml      Colours and theme
-├─ data/
-│  └─ volta_clean_hourly.csv   <-- YOU copy your dataset here
-├─ models/                     <-- the real model + scaler go here later
-├─ pages/
-│  ├─ 1_Dashboard.py           Charts and KPIs
-│  ├─ 2_Data_Explorer.py       Table, column catalog, data quality
-│  ├─ 3_Forecast_Demo.py       24-hour forecast page (demo mode for now)
-│  └─ 4_About.py               Goal, status, glossary
+streamlit_app/
+├─ app.py                      Entry point: defines the pages
+├─ requirements.txt
+├─ .streamlit/config.toml      Theme (presentation colours)
+├─ data/volta_clean_hourly.csv Hourly dataset
+├─ models/
+│  ├─ volta_lstm_final.keras   Final LSTM
+│  └─ volta_scaler_final.pkl   MinMaxScaler fitted on 2015–2017
+├─ app_pages/
+│  ├─ forecast.py              Pick a day: forecast vs real price + cheapest hours tool
+│  ├─ results.py               Test 2018 metrics and baselines
+│  ├─ patterns.py              Daily and weekly price patterns
+│  └─ about.py                 Project summary
 └─ volta/
-   ├─ config.py                Column names, colours, window sizes (safe to edit)
-   ├─ data.py                  Loads the CSV, quality checks, sidebar filters
-   ├─ charts.py                All Plotly charts
-   ├─ theme.py                 CSS, KPI cards, helpers
-   └─ model_integration.py     load_model() and predict() - the ONLY place for model code
+   ├─ forecast.py              Model inputs, predictions, metrics, find_cheapest_hours (no Streamlit)
+   └─ cache.py                 Loads data/model once and caches the predictions
 ```
 
-## 2. Setup on Windows (VS Code)
-
-1. Install Python 3.10 or newer from python.org (tick **Add Python to PATH**).
-2. Open the `volta_app` folder in VS Code (**File > Open Folder**).
-3. Open the terminal (**Terminal > New Terminal**) and run:
+## Run locally
 
 ```
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-If PowerShell blocks activation, run once:
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-
-4. Copy `volta_clean_hourly.csv` into the `data` folder.
-
-## 3. Run the app
-
-```
 streamlit run app.py
 ```
 
-The browser opens at http://localhost:8501. Stop the app with `Ctrl + C` in the terminal.
+Opens at http://localhost:8501. The first load takes a few seconds while TensorFlow
+loads and the model predicts every day.
 
-## 4. Which files can I edit?
+## Deploy (Streamlit Community Cloud)
 
-| File | Edit? |
-|---|---|
-| `volta/config.py` | Yes. Column names, colours, window sizes |
-| `volta/model_integration.py` | Yes. This is where the real model is connected |
-| `pages/*.py`, `volta/charts.py`, `volta/theme.py` | Only if you want to change the design |
-| Your notebooks and `volta_clean_hourly.csv` | Keep unchanged |
+1. Push to GitHub.
+2. On share.streamlit.io: **Create app** → repository `Ghadi213/volta`, branch `main`,
+   main file `streamlit_app/app.py`.
+3. In **Advanced settings** choose Python 3.12, then **Deploy**.
 
-## 5. Connect the real model later
+## Updating the model
 
-1. In `demo.ipynb`, save the final model and the scaler:
-   ```python
-   model.save("models/model.keras")
-   import joblib; joblib.dump(scaler, "models/scaler.joblib")
-   ```
-2. Install what the model needs: `pip install tensorflow scikit-learn joblib`.
-3. Open `volta/model_integration.py` and check `_predict_real()`. Make it match the notebook
-   (same scaler, window length, input shape and any extra inputs such as residual load).
-4. Restart the app. The Forecast page switches from demo mode to the model automatically.
-
-If you use another format (for example `.h5` or a PyTorch file), only `load_model()` and
-`_predict_real()` need to change. The pages stay the same.
-
-## 6. Troubleshooting
-
-- **"Dataset not found"**: the CSV must be at `data/volta_clean_hourly.csv`.
-- **`streamlit` is not recognised**: activate the virtual environment first (`.venv\Scripts\activate`).
-- **Dark sidebar colours missing**: update Streamlit with `pip install -U streamlit`.
+Save the new model and scaler from the notebook into `streamlit_app/models/` with the
+same file names. If the inputs change (window length, extra features), update
+`volta/forecast.py` so it builds the inputs exactly like the notebook.
