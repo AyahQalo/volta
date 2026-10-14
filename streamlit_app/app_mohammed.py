@@ -138,7 +138,12 @@ def find_cheapest_window(df, power_kw, duration_hours):
 # ---------------------------------------------------------
 # Sidebar Navigation
 # ---------------------------------------------------------
-st.sidebar.image("https://img.icons8.com/fluency/96/flash.png", width=50)
+# Purple bolt from assets/logo.svg (the old icon was an external link that did not load)
+BOLT_ICON = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 28 40">'
+    '<polygon points="15,2 3,23 12,23 9,38 24,15 15,15 19,2" fill="#8B5CF6"/></svg>'
+)
+st.sidebar.image(BOLT_ICON, width=40)
 st.sidebar.title("VOLTA System")
 
 st.sidebar.success("🟢 Final LSTM model loaded")
