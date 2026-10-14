@@ -8,5 +8,5 @@ streamlit
 plotly
 joblib
 torch
-# LSTM library (tensorflow/keras or torch): use whatever the bootcamp environment already has.
-# Do not spend project time installing new packages.
+tensorflow
+holidays
