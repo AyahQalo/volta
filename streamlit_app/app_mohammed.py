@@ -242,7 +242,8 @@ if page == "1. ⚡ Forecast & Device Optimizer":
         unsafe_allow_html=True,
     )
 
-    pow_col, dur_col = st.columns(2)
+    # bottom alignment keeps both boxes level even when one label wraps
+    pow_col, dur_col = st.columns(2, vertical_alignment="bottom")
     with pow_col:
       power_kw = st.number_input(
           "Device power (kW)", min_value=0.1, max_value=50.0, value=2.0, step=0.5
@@ -371,12 +372,17 @@ elif page == "3. ℹ️ About VOLTA":
     """)
 
   st.markdown("### 📊 Test 2018: Model vs Baselines")
+  # The LSTM is not compared with itself, so show "—" instead of an empty value
+  table = scores.round(2)
+  table["LSTM improvement (%)"] = table["LSTM improvement (%)"].map(
+      lambda v: "—" if pd.isna(v) else f"{v:.1f}%"
+  )
   st.dataframe(
-      scores.round(2),
+      table,
       width="stretch",
       column_config={
           "MAE": st.column_config.NumberColumn("MAE (EUR/MWh)", format="%.2f"),
           "RMSE": st.column_config.NumberColumn("RMSE (EUR/MWh)", format="%.2f"),
-          "LSTM improvement (%)": st.column_config.NumberColumn(format="%.1f%%"),
+          "LSTM improvement (%)": st.column_config.TextColumn(),
       },
   )
