@@ -1,30 +1,11 @@
 import datetime
-import os
-import joblib
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# ---------------------------------------------------------
-# Attempt to load ML Frameworks (Keras / PyTorch)
-# ---------------------------------------------------------
-HAS_TF = False
-HAS_TORCH = False
-
-try:
-  import tensorflow as tf
-
-  HAS_TF = True
-except ImportError:
-  pass
-
-try:
-  import torch
-
-  HAS_TORCH = True
-except ImportError:
-  pass
+from volta import cache, forecast as fc
 
 # ---------------------------------------------------------
 # Page Configuration & High-End Dark Styling
@@ -79,146 +60,48 @@ st.markdown(
 
 
 # ---------------------------------------------------------
-# Load Model & Scaler (Model Integration Layer)
+# Data & Model: the final LSTM from notebooks/04_models.ipynb
+# (same data, model and scaler as app.py, through volta/cache.py)
 # ---------------------------------------------------------
-@st.cache_resource
-def load_ml_components():
-  """تحميل نموذج LSTM والـ Scaler المربوطين بالمشروع"""
-  scaler = None
-  model = None
+MODEL_COLUMNS = {
+    "LSTM (Best)": "predicted",
+    "Lag-24 baseline (yesterday)": "lag_24",
+    "Lag-168 baseline (last week)": "lag_168",
+}
 
-  # 1. تحميل Scaler
-  if os.path.exists("scaler.pkl"):
-    scaler = joblib.load("scaler.pkl")
-
-  # 2. تحميل النموذج (Keras/TensorFlow أو PyTorch)
-  if os.path.exists("lstm_model.h5") and HAS_TF:
-    model = tf.keras.models.load_model("lstm_model.h5")
-  elif os.path.exists("lstm_model.pth") and HAS_TORCH:
-    model = torch.load("lstm_model.pth")
-
-  return model, scaler
+all_predictions = cache.predictions()
+FIRST_DAY = all_predictions["day"].dt.date.min()
+LAST_DAY = all_predictions["day"].dt.date.max()
 
 
-ml_model, ml_scaler = load_ml_components()
-
-
-# ---------------------------------------------------------
-# Load Dataset
-# ---------------------------------------------------------
-@st.cache_data
-def load_dataset():
-  file_path = "volta_clean_hourly.csv"
-  if not os.path.exists(file_path):
-    file_path = "energy_dataset.csv"
-
-  if os.path.exists(file_path):
-    df = pd.read_csv(file_path)
-    time_col = [
-        c for c in df.columns if "time" in c.lower() or "date" in c.lower()
-    ]
-    if time_col:
-      df["Datetime"] = pd.to_datetime(df[time_col[0]], utc=True)
-      df["Date"] = df["Datetime"].dt.date
-      df["Hour"] = df["Datetime"].dt.hour
-      df = df.sort_values("Datetime").reset_index(drop=True)
-    return df, True
-  return None, False
-
-
-df_raw, is_file_loaded = load_dataset()
-
-
-# ---------------------------------------------------------
-# Prediction Engine (LSTM Model Inference / Data Retrieval)
-# ---------------------------------------------------------
 def get_24h_predictions(selected_date, model_choice="LSTM (Best)"):
-  """يقوم بالتنبؤ لـ 24 ساعة قادمة باستخدام النموذج المربوط أو استخراج البيانات الحقيقية"""
-  if is_file_loaded and "Date" in df_raw.columns:
-    price_col = (
-        "price actual" if "price actual" in df_raw.columns else df_raw.columns[-1]
-    )
+  """The 24 forecast hours (00:00-23:00 UTC) of one day, plus the real price."""
+  day = cache.day_forecast(selected_date)
+  return pd.DataFrame({
+      "Hour_Label": day["timestamp"].dt.strftime("%H:%M"),
+      "Hour": day["timestamp"].dt.hour,
+      "Price_EUR": day[MODEL_COLUMNS[model_choice]].round(2),
+      "Actual_EUR": day["actual"].round(2),
+  })
 
-    # التنبؤ المباشر باستخدام نموذج LSTM إذا كان متوفراً والطلب على LSTM
-    if (
-        model_choice == "LSTM (Best)"
-        and ml_model is not None
-        and ml_scaler is not None
-    ):
-      target_dt = pd.to_datetime(selected_date)
-      past_data = df_raw[df_raw["Datetime"].dt.date < selected_date].tail(168)
 
-      if len(past_data) == 168:
-        # تجهيز المدخلات (168 ساعة سابقة)
-        raw_seq = past_data[price_col].values.reshape(-1, 1)
-        scaled_seq = ml_scaler.transform(raw_seq).reshape(1, 168, 1)
+# One date shared by every page: picking a day on one page keeps it on the others
+st.session_state.setdefault("selected_day", datetime.date(2018, 7, 15))
 
-        # تشغيل التنبؤ بالنموذج
-        if HAS_TF and isinstance(ml_model, tf.keras.Model):
-          pred_scaled = ml_model.predict(scaled_seq, verbose=0)
-        elif HAS_TORCH:
-          ml_model.eval()
-          with torch.no_grad():
-            tensor_in = torch.tensor(scaled_seq, dtype=torch.float32)
-            pred_scaled = ml_model(tensor_in).numpy()
 
-        # إلغاء التحجيم للقيم المتوقعة (24 ساعة)
-        pred_prices = ml_scaler.inverse_transform(pred_scaled.reshape(-1, 1))[
-            :24
-        ].flatten()
+def date_picker(label, container=st):
+  key = f"date_{label}"
 
-        hours_label = [f"{h:02d}:00" for h in range(24)]
-        return pd.DataFrame({
-            "Hour_Label": hours_label,
-            "Hour": list(range(24)),
-            "Price_EUR": np.round(pred_prices, 2),
-        })
+  def remember_day():
+    st.session_state["selected_day"] = st.session_state[key]
 
-    # استرجاع القيم الفعلية للليوم المحدد من الملف
-    sub_df = df_raw[df_raw["Date"] == selected_date].copy()
-    if len(sub_df) >= 24:
-      sub_df["Hour_Str"] = sub_df["Hour"].apply(lambda h: f"{h:02d}:00")
-      sub_df["Price_EUR"] = sub_df[price_col]
-      return (
-          sub_df[["Hour_Str", "Hour", "Price_EUR"]]
-          .rename(columns={"Hour_Str": "Hour_Label"})
-          .reset_index(drop=True)
-      )
-
-  # محاكاة واقعية احتياطية عند عدم توفر التاريخ المحدد في الملف
-  np.random.seed(int(selected_date.strftime("%Y%m%d")))
-  hours_label = [f"{h:02d}:00" for h in range(24)]
-  base_prices = [
-      42.6,
-      39.5,
-      38.0,
-      37.2,
-      40.1,
-      48.3,
-      58.0,
-      65.2,
-      68.1,
-      62.4,
-      58.0,
-      54.2,
-      52.1,
-      53.0,
-      59.4,
-      66.0,
-      72.5,
-      78.9,
-      79.1,
-      70.2,
-      64.1,
-      58.0,
-      50.2,
-      44.1,
-  ]
-  noise = np.random.normal(0, 2, 24)
-  prices = np.clip(np.round(np.array(base_prices) + noise, 1), 10, 150)
-
-  return pd.DataFrame(
-      {"Hour_Label": hours_label, "Hour": list(range(24)), "Price_EUR": prices}
+  return container.date_input(
+      label,
+      value=st.session_state["selected_day"],
+      min_value=FIRST_DAY,
+      max_value=LAST_DAY,
+      key=key,
+      on_change=remember_day,
   )
 
 
@@ -258,11 +141,7 @@ def find_cheapest_window(df, power_kw, duration_hours):
 st.sidebar.image("https://img.icons8.com/fluency/96/flash.png", width=50)
 st.sidebar.title("VOLTA System")
 
-# حالة ربط النموذج بالواجهة
-if ml_model is not None and ml_scaler is not None:
-  st.sidebar.success("🟢 ML Model: Connected & Loaded")
-else:
-  st.sidebar.info("🟡 ML Model: Offline (Using Dataset View)")
+st.sidebar.success("🟢 Final LSTM model loaded")
 
 st.sidebar.markdown("---")
 
@@ -290,15 +169,11 @@ if page == "1. ⚡ Forecast & Device Optimizer":
   st.markdown("---")
 
   # Header Inputs Row
-  col_date, col_target, col_model = st.columns(3)
+  col_date, col_model = st.columns(2)
   with col_date:
-    selected_date = st.date_input(
-        "Select date:", value=datetime.date(2018, 7, 15)
-    )
-  with col_target:
-    st.selectbox("Target:", ["Price (€/MWh)", "Demand (GW)"])
+    selected_date = date_picker("Select date:")
   with col_model:
-    model_choice = st.selectbox("Model:", ["LSTM (Best)", "Seasonal Naive"])
+    model_choice = st.selectbox("Model:", list(MODEL_COLUMNS))
 
   df_day = get_24h_predictions(selected_date, model_choice)
 
@@ -319,7 +194,7 @@ if page == "1. ⚡ Forecast & Device Optimizer":
       f"at {max_p_row['Hour_Label']}",
       delta_color="inverse",
   )
-  m3.metric("Average Price", f"€{avg_p:.1f} /MWh", "Next 24 hours")
+  m3.metric("Average Price", f"€{avg_p:.1f} /MWh", "Next 24 hours", delta_color="off")
 
   st.markdown("<br>", unsafe_allow_html=True)
 
@@ -328,22 +203,28 @@ if page == "1. ⚡ Forecast & Device Optimizer":
 
   with col_chart:
     st.subheader("📈 Predicted Electricity Price (Next 24 Hours)")
-    fig_line = px.line(
-        df_day,
-        x="Hour_Label",
-        y="Price_EUR",
-        markers=True,
-        labels={"Price_EUR": "Price (€/MWh)", "Hour_Label": "Hour"},
+    chart_df = df_day.rename(
+        columns={"Price_EUR": model_choice, "Actual_EUR": "Actual price"}
     )
-    fig_line.update_traces(line_color="#10b981", line_width=3)
+    fig_line = px.line(
+        chart_df,
+        x="Hour_Label",
+        y=[model_choice, "Actual price"],
+        markers=True,
+        color_discrete_sequence=["#10b981", "#9ca3af"],
+        labels={"value": "Price (€/MWh)", "Hour_Label": "Hour (UTC)", "variable": ""},
+    )
+    fig_line.update_traces(line_width=3, selector={"name": model_choice})
+    fig_line.update_traces(line_dash="dash", line_width=2, selector={"name": "Actual price"})
     fig_line.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=380,
         margin=dict(l=10, r=10, t=20, b=20),
+        legend=dict(orientation="h", y=1.1, x=0),
     )
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(fig_line, width="stretch")
 
   with col_device:
     st.markdown(
@@ -366,7 +247,7 @@ if page == "1. ⚡ Forecast & Device Optimizer":
           "Duration (hours)", min_value=1, max_value=24, value=3, step=1
       )
 
-    if st.button("🔍 Find Best Time", use_container_width=True):
+    if st.button("🔍 Find Best Time", width="stretch"):
       res = find_cheapest_window(df_day, power_kw, duration_hours)
 
       st.markdown(
@@ -397,14 +278,13 @@ if page == "1. ⚡ Forecast & Device Optimizer":
 elif page == "2. 📊 Forecast Insights":
   st.title("📊 Forecast Insights & Breakdown")
   st.markdown(
-      "Detailed statistical analysis of price distributions and peak/off-peak"
-      " hours."
+      "The cheapest and most expensive forecast hours of the selected day."
+      " Hours are grouped into low, moderate and high prices compared with"
+      " that day's average."
   )
   st.markdown("---")
 
-  selected_date = st.sidebar.date_input(
-      "Filter Date:", value=datetime.date(2018, 7, 15)
-  )
+  selected_date = date_picker("Filter Date:", st.sidebar)
   df_day = get_24h_predictions(selected_date)
 
   p_mean = df_day["Price_EUR"].mean()
@@ -427,7 +307,7 @@ elif page == "2. 📊 Forecast Insights":
         df_day.sort_values(by="Price_EUR").head(5)[
             ["Hour_Label", "Price_EUR", "Category"]
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
   with c2:
@@ -436,7 +316,7 @@ elif page == "2. 📊 Forecast Insights":
         df_day.sort_values(by="Price_EUR", ascending=False).head(5)[
             ["Hour_Label", "Price_EUR", "Category"]
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -451,7 +331,7 @@ elif page == "2. 📊 Forecast Insights":
           "Moderate": "#f59e0b",
           "High Price": "#ef4444",
       },
-      labels={"Price_EUR": "Price (€/MWh)", "Hour_Label": "Hour"},
+      labels={"Price_EUR": "Price (€/MWh)", "Hour_Label": "Hour (UTC)"},
   )
   fig_bar.update_layout(
       template="plotly_dark",
@@ -459,20 +339,39 @@ elif page == "2. 📊 Forecast Insights":
       plot_bgcolor="rgba(0,0,0,0)",
       height=380,
   )
-  st.plotly_chart(fig_bar, use_container_width=True)
+  st.plotly_chart(fig_bar, width="stretch")
 
 # =========================================================
 # PAGE 3: ABOUT VOLTA
 # =========================================================
 elif page == "3. ℹ️ About VOLTA":
   st.title("ℹ️ About VOLTA Project")
-  st.markdown("""
+
+  test = all_predictions[all_predictions["split"] == "Test (2018)"]
+  scores = fc.score(test)
+  lstm_mae = scores.loc["Final LSTM", "MAE"]
+  lag24_mae = scores.loc["Lag-24 (same hour yesterday)", "MAE"]
+  gain = scores.loc["Lag-24 (same hour yesterday)", "LSTM improvement (%)"]
+
+  st.markdown(f"""
     ### ⚡ Executive Summary
-    **VOLTA** is an AI-powered platform for short-term **Day-Ahead Electricity Price Forecasting** in Spain. It predicts hourly settlement prices 24 hours ahead, allowing consumers and operators to optimize energy usage.
+    **VOLTA** forecasts Spain's actual electricity price (`price actual`) for each of the next 24 hours, so people can run their devices in the cheapest hours.
 
     ---
 
     ### 🧠 Machine Learning Model
-    * **Model:** PyTorch / Keras LSTM Neural Network (168h Input Window $\\rightarrow$ 24h Forecast Horizon).
-    * **Performance:** **MAE = 4.85 EUR/MWh** (vs Static Baseline MAE = 10.98 EUR/MWh) — **> 55.8% Error Reduction**.
+    * **Model:** Keras LSTM + `is_weekend` feature (168h input window $\\rightarrow$ 24h forecast).
+    * **Training:** 2015–2017 · **Test:** 2018 (never seen during training).
+    * **Performance (Test 2018):** **MAE = {lstm_mae:.2f} EUR/MWh** vs Lag-24 baseline MAE = {lag24_mae:.2f} EUR/MWh — **{gain:.1f}% more accurate**.
     """)
+
+  st.markdown("### 📊 Test 2018: Model vs Baselines")
+  st.dataframe(
+      scores.round(2),
+      width="stretch",
+      column_config={
+          "MAE": st.column_config.NumberColumn("MAE (EUR/MWh)", format="%.2f"),
+          "RMSE": st.column_config.NumberColumn("RMSE (EUR/MWh)", format="%.2f"),
+          "LSTM improvement (%)": st.column_config.NumberColumn(format="%.1f%%"),
+      },
+  )
