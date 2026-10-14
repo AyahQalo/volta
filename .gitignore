@@ -4,6 +4,8 @@ data/raw/*
 # saved models can be large; share them in the chat/drive if needed
 *.h5
 *.keras
+# the deployed Streamlit app needs its model
+!streamlit_app/models/*.keras
 .ipynb_checkpoints/
 __pycache__/
 .DS_Store

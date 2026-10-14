@@ -1,0 +1,31 @@
+# VOLTA theme: same colours as the presentation (presentation/VOLTA.pdf)
+[theme]
+base = "dark"
+primaryColor = "#8B5CF6"            # purple (titles, buttons, sliders)
+backgroundColor = "#0B1030"         # deep navy page
+secondaryBackgroundColor = "#1E2766" # card / widget navy
+textColor = "#EEF0FF"
+borderColor = "#3B3F8F"
+linkColor = "#A78BFA"
+showWidgetBorder = true
+baseRadius = "large"
+buttonRadius = "full"
+
+font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+
+violetColor = "#8B5CF6"
+redColor = "#F0708A"                 # pink: expensive hours
+greenColor = "#4FD1A5"               # teal: cheap hours
+blueColor = "#6366F1"
+
+#               purple     pink       teal       indigo     lilac
+chartCategoricalColors = ["#8B5CF6", "#F0708A", "#4FD1A5", "#6366F1", "#C4B5FD", "#94A3B8"]
+
+dataframeHeaderBackgroundColor = "#2A2F7A"
+dataframeHeaderTextColor = "#FFFFFF"
+
+[theme.sidebar]
+backgroundColor = "#080C26"
+secondaryBackgroundColor = "#1E2766"
+borderColor = "#3B3F8F"
